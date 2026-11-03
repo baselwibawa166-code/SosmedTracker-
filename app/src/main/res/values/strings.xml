@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sosmed Tracker</string>
+    <string name="service_desc">Menghitung jumlah scroll di aplikasi sosmed yang dipilih. Tidak membaca isi layar dan tidak mengirim data ke mana pun.</string>
+</resources>
