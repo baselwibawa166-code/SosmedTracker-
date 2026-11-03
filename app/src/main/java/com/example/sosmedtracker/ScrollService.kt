@@ -29,7 +29,12 @@ class ScrollService : AccessibilityService() {
 
     // Pelacak aplikasi yang sedang di depan (lewat UsageStats, bukan event jendela).
     private var fgPkg: String? = null
+    private var fgClass: String? = null
     private var lastEventTs = 0L
+
+    // Cadangan: aplikasi terakhir yang kena scroll (dipakai kalau deteksi foreground gagal).
+    private var lastScrollPkg: String? = null
+    private var lastScrollAt = 0L
 
     // Cache durasi supaya tidak query berat tiap 2 detik.
     private var cachedUsage: Map<String, Long> = emptyMap()
@@ -110,6 +115,8 @@ class ScrollService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
                 if (!Store.TRACKED.contains(pkg)) return
                 currentPkg = pkg
+                lastScrollPkg = pkg
+                lastScrollAt = SystemClock.elapsedRealtime()
 
                 // Satu gestur scroll bisa memicu banyak event, jadi dihitung 1x per 400 ms.
                 val now = SystemClock.elapsedRealtime()
@@ -138,9 +145,13 @@ class ScrollService : AccessibilityService() {
                 when (e.eventType) {
                     UsageEvents.Event.ACTIVITY_RESUMED -> {
                         fgPkg = p
+                        fgClass = e.className
                     }
                     UsageEvents.Event.ACTIVITY_PAUSED -> {
-                        if (fgPkg == p) fgPkg = null
+                        if (fgPkg == p && fgClass == e.className) {
+                            fgPkg = null
+                            fgClass = null
+                        }
                     }
                 }
                 if (e.timeStamp > maxTs) maxTs = e.timeStamp
@@ -157,16 +168,32 @@ class ScrollService : AccessibilityService() {
     }
 
     private fun updateOverlay() {
+        try {
+            doUpdateOverlay()
+        } catch (e: Exception) {
+            // jangan sampai layanan crash
+        }
+    }
+
+    private fun doUpdateOverlay() {
         val o = overlay ?: return
         val t = overlayText ?: return
 
         val hasUsage = Usage.hasAccess(this)
-        val pkg: String?
+        var pkg: String? = null
         if (hasUsage) {
             pollForeground()
             pkg = fgPkg
         } else {
             pkg = currentPkg
+        }
+
+        // Cadangan: kalau barusan scroll di aplikasi sosmed, tetap tampilkan.
+        val lsp = lastScrollPkg
+        if (lsp != null && SystemClock.elapsedRealtime() - lastScrollAt < 10000L) {
+            if (pkg == null || !Store.TRACKED.contains(pkg)) {
+                pkg = lsp
+            }
         }
 
         var target: Target? = null
