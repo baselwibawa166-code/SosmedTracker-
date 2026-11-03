@@ -1,6 +1,8 @@
 package com.example.sosmedtracker
 
 import android.accessibilityservice.AccessibilityService
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -25,10 +27,18 @@ class ScrollService : AccessibilityService() {
     private var wm: WindowManager? = null
     private val handler = Handler(Looper.getMainLooper())
 
+    // Pelacak aplikasi yang sedang di depan (lewat UsageStats, bukan event jendela).
+    private var fgPkg: String? = null
+    private var lastEventTs = 0L
+
+    // Cache durasi supaya tidak query berat tiap 2 detik.
+    private var cachedUsage: Map<String, Long> = emptyMap()
+    private var cachedAt = 0L
+
     private val ticker = object : Runnable {
         override fun run() {
             updateOverlay()
-            handler.postDelayed(this, 5000L)
+            handler.postDelayed(this, 2000L)
         }
     }
 
@@ -92,8 +102,10 @@ class ScrollService : AccessibilityService() {
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                // Cuma dipakai kalau Usage Access belum aktif. Abaikan jendela sistem/keyboard.
+                if (pkg == "com.android.systemui") return
+                if (pkg.contains("inputmethod") || pkg.contains("keyboard")) return
                 currentPkg = pkg
-                updateOverlay()
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
                 if (!Store.TRACKED.contains(pkg)) return
@@ -111,6 +123,34 @@ class ScrollService : AccessibilityService() {
         }
     }
 
+    /** Update fgPkg dari event UsageStats yang baru (incremental, murah). */
+    private fun pollForeground() {
+        try {
+            val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val now = System.currentTimeMillis()
+            val from = if (lastEventTs == 0L) now - 6L * 3600L * 1000L else lastEventTs - 3000L
+            val events = usm.queryEvents(from, now) ?: return
+            val e = UsageEvents.Event()
+            var maxTs = lastEventTs
+            while (events.hasNextEvent()) {
+                events.getNextEvent(e)
+                val p = e.packageName ?: continue
+                when (e.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        fgPkg = p
+                    }
+                    UsageEvents.Event.ACTIVITY_PAUSED -> {
+                        if (fgPkg == p) fgPkg = null
+                    }
+                }
+                if (e.timeStamp > maxTs) maxTs = e.timeStamp
+            }
+            lastEventTs = if (maxTs == 0L) now else maxTs
+        } catch (e: Exception) {
+            // abaikan, coba lagi di putaran berikutnya
+        }
+    }
+
     private fun fmt(ms: Long): String {
         val m = ms / 60000L
         return if (m >= 60L) "${m / 60L}j ${m % 60L}m" else "${m}m"
@@ -119,7 +159,16 @@ class ScrollService : AccessibilityService() {
     private fun updateOverlay() {
         val o = overlay ?: return
         val t = overlayText ?: return
-        val pkg = currentPkg
+
+        val hasUsage = Usage.hasAccess(this)
+        val pkg: String?
+        if (hasUsage) {
+            pollForeground()
+            pkg = fgPkg
+        } else {
+            pkg = currentPkg
+        }
+
         var target: Target? = null
         if (pkg != null) {
             for (x in Store.TARGETS) {
@@ -135,11 +184,16 @@ class ScrollService : AccessibilityService() {
         for (p in target.pkgs) {
             sc += Store.getScroll(this, p)
         }
+
         var ms = 0L
-        if (Usage.hasAccess(this)) {
-            val usage = Usage.todayMs(this)
+        if (hasUsage) {
+            val nowReal = SystemClock.elapsedRealtime()
+            if (nowReal - cachedAt > 5000L) {
+                cachedUsage = Usage.todayMs(this)
+                cachedAt = nowReal
+            }
             for (p in target.pkgs) {
-                ms += usage[p] ?: 0L
+                ms += cachedUsage[p] ?: 0L
             }
         }
         t.text = target.name + "  ↕ " + sc + "  ⏱ " + fmt(ms)
