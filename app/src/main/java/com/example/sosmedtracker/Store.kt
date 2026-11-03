@@ -47,6 +47,12 @@ object Store {
         e.apply()
     }
 
+    fun overlayOn(ctx: Context): Boolean = prefs(ctx).getBoolean("overlay_on", true)
+
+    fun setOverlay(ctx: Context, on: Boolean) {
+        prefs(ctx).edit().putBoolean("overlay_on", on).apply()
+    }
+
     /** Waktu reset terakhir hari ini (0 kalau belum pernah reset). */
     fun resetAt(ctx: Context): Long = prefs(ctx).getLong("reset_" + today(), 0L)
 }

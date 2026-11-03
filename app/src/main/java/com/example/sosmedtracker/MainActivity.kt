@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var btnUsage: Button
     private lateinit var btnAcc: Button
+    private lateinit var btnOverlay: Button
     private lateinit var totalDuration: TextView
     private lateinit var totalScroll: TextView
     private var dp = 1f
@@ -101,6 +102,12 @@ class MainActivity : Activity() {
                 .show()
         }
         totalCard.addView(resetBtn)
+        btnOverlay = Button(this)
+        btnOverlay.setOnClickListener {
+            Store.setOverlay(this, !Store.overlayOn(this))
+            refresh()
+        }
+        totalCard.addView(btnOverlay)
         root.addView(totalCard)
 
         // Kartu status izin
@@ -202,6 +209,7 @@ class MainActivity : Activity() {
             statusText.text = "Usage Access: " + (if (usageOk) "aktif" else "belum aktif") +
                 "\nAccessibility: " + (if (accOk) "aktif" else "belum aktif")
         }
+        btnOverlay.text = if (Store.overlayOn(this)) "Overlay di layar: NYALA" else "Overlay di layar: MATI"
         btnUsage.visibility = if (usageOk) View.GONE else View.VISIBLE
         btnAcc.visibility = if (accOk) View.GONE else View.VISIBLE
 

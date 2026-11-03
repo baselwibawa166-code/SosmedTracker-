@@ -1,11 +1,23 @@
 package com.example.sosmedtracker
 
+import android.app.AppOpsManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.os.Process
 import java.util.Calendar
 
 object Usage {
+
+    fun hasAccess(ctx: Context): Boolean {
+        val ops = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = ops.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            ctx.packageName
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
 
     private fun startOfDay(): Long {
         val c = Calendar.getInstance()
@@ -16,15 +28,15 @@ object Usage {
         return c.timeInMillis
     }
 
-    /** Total waktu di foreground per package sejak jam 00:00 hari ini (ms). */
+    /** Total waktu di foreground per package sejak 00:00 (atau sejak reset terakhir), dalam ms. */
     fun todayMs(ctx: Context): Map<String, Long> {
+        val total = HashMap<String, Long>()
         val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val end = System.currentTimeMillis()
         val start = maxOf(startOfDay(), Store.resetAt(ctx))
-        val events = usm.queryEvents(start, end)
+        val events = usm.queryEvents(start, end) ?: return total
         val e = UsageEvents.Event()
         val resumedAt = HashMap<String, Long>()
-        val total = HashMap<String, Long>()
 
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
