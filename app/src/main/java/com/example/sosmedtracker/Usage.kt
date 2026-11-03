@@ -20,7 +20,8 @@ object Usage {
     fun todayMs(ctx: Context): Map<String, Long> {
         val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val end = System.currentTimeMillis()
-        val events = usm.queryEvents(startOfDay(), end)
+        val start = maxOf(startOfDay(), Store.resetAt(ctx))
+        val events = usm.queryEvents(start, end)
         val e = UsageEvents.Event()
         val resumedAt = HashMap<String, Long>()
         val total = HashMap<String, Long>()

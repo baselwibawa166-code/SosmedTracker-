@@ -36,4 +36,17 @@ object Store {
     }
 
     fun getScroll(ctx: Context, pkg: String): Int = prefs(ctx).getInt(key(pkg), 0)
+
+    /** Hapus hitungan scroll hari ini dan catat waktu reset untuk durasi. */
+    fun resetToday(ctx: Context) {
+        val e = prefs(ctx).edit()
+        for (p in TRACKED) {
+            e.remove(key(p))
+        }
+        e.putLong("reset_" + today(), System.currentTimeMillis())
+        e.apply()
+    }
+
+    /** Waktu reset terakhir hari ini (0 kalau belum pernah reset). */
+    fun resetAt(ctx: Context): Long = prefs(ctx).getLong("reset_" + today(), 0L)
 }
